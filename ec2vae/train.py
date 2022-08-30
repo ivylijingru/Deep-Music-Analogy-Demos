@@ -2,7 +2,7 @@ import json
 import torch
 import os
 import numpy as np
-from model import VAE
+from model import EC2VAE
 from data_loader import MusicArrayLoader
 from torch import optim
 from torch.distributions import kl_divergence, Normal
@@ -32,7 +32,7 @@ if not os.path.isdir('params'):
     os.mkdir('params')
 save_path = 'params/{}.pt'.format(args['name'])
 writer = SummaryWriter('log/{}'.format(args['name']))
-model = VAE(130, args['hidden_dim'], 3, 12, args['pitch_dim'],
+model = EC2VAE(130, args['hidden_dim'], 3, 12, args['pitch_dim'],
             args['rhythm_dim'], args['time_step'])
 if args['if_parallel']:
     model = torch.nn.DataParallel(model, device_ids=[0, 1])

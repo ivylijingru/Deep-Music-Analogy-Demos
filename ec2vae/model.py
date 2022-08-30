@@ -1,10 +1,13 @@
+import pretty_midi as pm
+import numpy as np
+
 import torch
 from torch import nn
 from torch.nn import functional as F
 from torch.distributions import Normal
 
 
-class VAE(nn.Module):
+class EC2VAE(nn.Module):
     def __init__(self,
                  roll_dims,
                  hidden_dims,
@@ -14,7 +17,7 @@ class VAE(nn.Module):
                  z2_dims,
                  n_step,
                  k=1000):
-        super(VAE, self).__init__()
+        super(EC2VAE, self).__init__()
         self.gru_0 = nn.GRU(
             roll_dims + condition_dims,
             hidden_dims,
@@ -134,3 +137,53 @@ class VAE(nn.Module):
         output = (recon, recon_rhythm, dis1.mean, dis1.stddev, dis2.mean,
                   dis2.stddev)
         return output
+
+    @classmethod
+    def init_model(cls):
+        return cls(130, 2048, 3, 12, 128, 128, 32)
+
+    def load_model(self, model_path):
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        map_location = device
+        dic = torch.load(model_path, map_location=map_location)
+        for name in list(dic.keys()):
+            dic[name.replace('module.', '')] = dic.pop(name)
+        self.load_state_dict(dic)
+        self.to(device)
+
+    @staticmethod
+    def note_array_to_notes(note_array, bpm, start=0.):
+        note_array = np.argmax(note_array, axis=1)
+        notes = []
+        alpha = 0.25 * 60 / bpm
+        current_dur = 0
+        for t in range(len(note_array) - 1, -1, -1):
+            if note_array[t] == 129:
+                current_dur = 0
+            elif note_array[t] == 128:
+                current_dur += 1
+            else:
+                s = start + t * alpha
+                e = start + (t + current_dur + 1) * alpha
+                current_dur = 0
+                notes.append(pm.Note(100, note_array[t], s, e))
+        return notes
+
+    @staticmethod
+    def chord_to_notes(c, bpm, start=0.):
+        notes = []
+        alpha = 0.25 * 60 / bpm
+        current_dur = 0
+        for t in range(c.shape[0] - 1, -1, -1):
+            if (c[t] == 0).all():
+                current_dur = 0
+            else:
+                if t != 0 and (c[t] == c[t - 1]).all():
+                    current_dur += 1
+                else:
+                    s = start + t * alpha
+                    e = start + (t + current_dur + 1) * alpha
+                    pitches = np.where(c[t])[0]
+                    notes += [pm.Note(80, p + 48, s, e) for p in pitches]
+                    current_dur = 0
+        return notes
